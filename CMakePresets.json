@@ -1,0 +1,89 @@
+{
+	"version": 3,
+	"configurePresets": [
+		{
+			"name": "windows",
+			"hidden": true,
+			"generator": "Ninja",
+			"binaryDir": "${sourceDir}/out/build/${presetName}",
+			"installDir": "${sourceDir}/out/install/${presetName}",
+			"condition": {
+				"type": "equals",
+				"lhs": "${hostSystemName}",
+				"rhs": "Windows"
+			}
+		},
+
+		{
+			"name": "x86",
+			"hidden": true,
+			"architecture": {
+				"value": "x86",
+				"strategy": "external"
+			},
+			"vendor": {
+				"jetbrains.com/clion": {
+					"toolchain": "Visual Studio x86"
+				}
+			}
+		},
+
+		{
+			"name": "msvc-cl",
+			"hidden": true,
+			"cacheVariables": {
+                "CMAKE_C_COMPILER": "cl.exe",
+                "CMAKE_CXX_COMPILER": "cl.exe"
+            }
+		},
+		{
+			"name": "msvc-clang-cl",
+			"hidden": true,
+			"cacheVariables": {
+				"CMAKE_C_COMPILER": "clang-cl.exe",
+				"CMAKE_CXX_COMPILER": "clang-cl.exe",
+				"CMAKE_C_COMPILER_TARGET": "i686-pc-windows-msvc",
+				"CMAKE_CXX_COMPILER_TARGET": "i686-pc-windows-msvc"
+            }
+		},
+
+		{
+			"name": "debug",
+			"hidden": true,
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug"
+			}
+		},
+		{
+			"name": "relwithdebinfo",
+			"hidden": true,
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "RelWithDebInfo"
+			}
+		},
+		{
+			"name": "release",
+			"hidden": true,
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Release"
+			}
+		},
+
+		{ "name": "msvc-x86-debug", "inherits": [ "windows", "msvc-cl", "x86", "debug" ] },
+		{ "name": "msvc-x86-release", "inherits": [ "windows", "msvc-cl", "x86", "release" ] },
+		{ "name": "msvc-clang-x86-debug", "inherits": [ "windows", "msvc-clang-cl", "x86", "debug" ] },
+		{ "name": "msvc-clang-x86-release", "inherits": [ "windows", "msvc-clang-cl", "x86", "release" ] }
+	],
+	"buildPresets": [
+		{ "name": "msvc-x86-debug", "configurePreset": "msvc-x86-debug" },
+		{ "name": "msvc-x86-release", "configurePreset": "msvc-x86-release" },
+		{ "name": "msvc-clang-x86-debug", "configurePreset": "msvc-clang-x86-debug" },
+		{ "name": "msvc-clang-x86-release", "configurePreset": "msvc-clang-x86-release" }
+	],
+	"testPresets": [
+		{ "name": "msvc-x86-debug", "configurePreset": "msvc-x86-debug" },
+		{ "name": "msvc-x86-release", "configurePreset": "msvc-x86-release" },
+		{ "name": "msvc-clang-x86-debug", "configurePreset": "msvc-clang-x86-debug" },
+		{ "name": "msvc-clang-x86-release", "configurePreset": "msvc-clang-x86-release" }
+	]
+}
