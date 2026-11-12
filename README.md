@@ -24,6 +24,33 @@ To fix this problem, i've created a proxy library that utilized `dbghelp.dll` (n
 
 ---
 
+## Function Implementation & Compatibility Status
+
+The vast majority of the 112 exports are forwarded directly to Windows' native `dbghelp.dll` and `imagehlp.dll` through PE export forwarding. Functions not present in modern libraries or requiring signature adjustments are implemented in `src/stubs.cpp`:
+
+### Current No-Op Functions
+
+- **`MarkImageAsRunFromSwap`** (Ordinal `@36`):
+  - **Status**: No-op stub returning `FALSE`.
+  - **Details**: This function is not implemented in modern `dbghelp` / `imagehlp`. In the original 1998 `IMAGEHL2.DLL`, this was also a no-op (`xor eax, eax; ret 8`).
+
+### Custom Implemented / Wrapper Functions
+
+- **`CopyPdb`** (Ordinal `@4`):
+  - **Status**: Fully implemented.
+  - **Details**: Decompiled from original `IMAGEHL2.DLL`. Performs standard file copying when `Replace` / `StripPrivate` is `FALSE` (or paths match), and strips private debug symbols by dynamically invoking `PDBOpen`, `PDBCopyTo`, and `PDBClose` from `msdbi.dll` when `Replace` is `TRUE`.
+- **`MapDebugInformation64`** (Ordinal `@32`):
+  - **Status**: Compatibility wrapper.
+  - **Details**: Dynamically invokes `dbghelp.MapDebugInformation`, casting `DWORD64 ImageBase` down to 32-bit `ULONG`.
+- **`UnmapDebugInformation64`** (Ordinal `@109`):
+  - **Status**: Compatibility wrapper.
+  - **Details**: Dynamically invokes `dbghelp.UnmapDebugInformation`.
+
+> [!NOTE]
+> The empty function declarations in `src/stubs.cpp` (such as `BindImage()`, `SymCleanup()`, etc.) are compile-time linker stubs required to satisfy MSVC `/DEF` export validation. At runtime, the PE loader dispatches these calls directly to `dbghelp.dll` or `imagehlp.dll` via PE forwarders with zero overhead.
+
+---
+
 ## Building
 
 Building requires **CMake 3.20+** and **Visual Studio 2022+** with C/C++ development tools.

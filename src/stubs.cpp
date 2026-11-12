@@ -10,6 +10,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <string.h>
 
 #if defined(_MSC_VER)
 #pragma warning(disable: 4100 4206)
@@ -19,10 +20,63 @@
 
 BOOL WINAPI CopyPdb(PCSTR SourcePdb, PCSTR TargetPdb, BOOL Replace)
 {
-    (void)SourcePdb;
-    (void)TargetPdb;
-    (void)Replace;
-    return FALSE;
+    if (!SourcePdb || !TargetPdb) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+
+    /*
+     * If Replace (StripPrivate) is FALSE (0):
+     * If source and destination paths match (case-insensitive), return TRUE immediately.
+     * Otherwise copy the file without failing if destination already exists.
+     */
+    if (!Replace) {
+        if (_stricmp(SourcePdb, TargetPdb) == 0) {
+            return TRUE;
+        }
+        return CopyFileA(SourcePdb, TargetPdb, FALSE);
+    }
+
+    /*
+     * If Replace (StripPrivate) is TRUE, strip private symbols using msdbi.dll:
+     * PDBOpen, PDBCopyTo, and PDBClose are dynamically loaded from msdbi.dll.
+     */
+    using PfnPDBOpen = BOOL (__cdecl *)(PCSTR, PCSTR, DWORD, PVOID, PVOID, PVOID*);
+    using PfnPDBCopyTo = BOOL (__cdecl *)(PVOID, PCSTR, DWORD, DWORD);
+    using PfnPDBClose = BOOL (__cdecl *)(PVOID);
+
+    HMODULE hMsDbi = GetModuleHandleA("msdbi.dll");
+    if (!hMsDbi) {
+        hMsDbi = LoadLibraryA("msdbi.dll");
+    }
+    if (!hMsDbi) {
+        return FALSE;
+    }
+
+    const auto PDBOpen = reinterpret_cast<PfnPDBOpen>(GetProcAddress(hMsDbi, "PDBOpen"));
+    const auto PDBCopyTo = reinterpret_cast<PfnPDBCopyTo>(GetProcAddress(hMsDbi, "PDBCopyTo"));
+    const auto PDBClose = reinterpret_cast<PfnPDBClose>(GetProcAddress(hMsDbi, "PDBClose"));
+
+    if (!PDBOpen || !PDBCopyTo || !PDBClose) {
+        return FALSE;
+    }
+
+    char szError[1024];
+    DWORD dwErrorCode = 0;
+    PVOID pPdb = NULL;
+
+    BOOL status = PDBOpen(SourcePdb, "r", 0, &dwErrorCode, szError, &pPdb);
+    if (status) {
+        status = DeleteFileA(TargetPdb);
+        if (status || GetLastError() == ERROR_FILE_NOT_FOUND) {
+            status = PDBCopyTo(pPdb, TargetPdb, 1, 0); /* 1 = copyRemovePrivate */
+        }
+        if (!status) {
+            DeleteFileA(TargetPdb);
+        }
+        PDBClose(pPdb);
+    }
+    return status;
 }
 
 BOOL WINAPI MarkImageAsRunFromSwap(HANDLE FileHandle, DWORD Flags)

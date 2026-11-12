@@ -15,12 +15,6 @@ typedef struct _API_VERSION {
     USHORT  Reserved;
 } API_VERSION, *LPAPI_VERSION;
 
-typedef LPAPI_VERSION (WINAPI *PFN_ImagehlpApiVersion)(VOID);
-typedef PIMAGE_NT_HEADERS (WINAPI *PFN_ImageNtHeader)(PVOID Base);
-typedef BOOL (WINAPI *PFN_SymInitialize)(HANDLE hProcess, PCSTR UserSearchPath, BOOL fInvadeProcess);
-typedef BOOL (WINAPI *PFN_SymCleanup)(HANDLE hProcess);
-typedef BOOL (WINAPI *PFN_MakeSureDirectoryPathExists)(PCSTR DirPath);
-
 static const char* g_allExports[] = {
     "BindImage", /* @1 */
     "BindImageEx", /* @2 */
@@ -186,9 +180,9 @@ int main(int argc, char** argv)
     printf("Testing live API invocation through proxy:\n");
 
     /* 1. Test ImagehlpApiVersion */
-    PFN_ImagehlpApiVersion pfnApiVersion = (PFN_ImagehlpApiVersion)GetProcAddress(hProxy, "ImagehlpApiVersion");
-    if (pfnApiVersion) {
-        LPAPI_VERSION pVer = pfnApiVersion();
+    const auto ImagehlpApiVersion = reinterpret_cast<LPAPI_VERSION(WINAPI *)(VOID)>(GetProcAddress(hProxy, "ImagehlpApiVersion"));
+    if (ImagehlpApiVersion) {
+        LPAPI_VERSION pVer = ImagehlpApiVersion();
         if (pVer) {
             printf("  [+] ImagehlpApiVersion() returned: %u.%u.%u\n",
                    (unsigned int)pVer->MajorVersion,
@@ -204,10 +198,10 @@ int main(int argc, char** argv)
     }
 
     /* 2. Test ImageNtHeader on self */
-    PFN_ImageNtHeader pfnImageNtHeader = (PFN_ImageNtHeader)GetProcAddress(hProxy, "ImageNtHeader");
-    if (pfnImageNtHeader) {
+    const auto ImageNtHeader = reinterpret_cast<PIMAGE_NT_HEADERS(WINAPI *)(PVOID)>(GetProcAddress(hProxy, "ImageNtHeader"));
+    if (ImageNtHeader) {
         HMODULE hSelf = GetModuleHandleA(NULL);
-        PIMAGE_NT_HEADERS pNt = pfnImageNtHeader((PVOID)hSelf);
+        PIMAGE_NT_HEADERS pNt = ImageNtHeader((PVOID)hSelf);
         if (pNt && pNt->Signature == IMAGE_NT_SIGNATURE) {
             printf("  [+] ImageNtHeader(self) returned valid NT signature: 0x%08X\n", (unsigned int)pNt->Signature);
         } else {
@@ -220,13 +214,13 @@ int main(int argc, char** argv)
     }
 
     /* 3. Test SymInitialize and SymCleanup */
-    PFN_SymInitialize pfnSymInit = (PFN_SymInitialize)GetProcAddress(hProxy, "SymInitialize");
-    PFN_SymCleanup pfnSymCleanup = (PFN_SymCleanup)GetProcAddress(hProxy, "SymCleanup");
-    if (pfnSymInit && pfnSymCleanup) {
+    const auto SymInitialize = reinterpret_cast<BOOL(WINAPI *)(HANDLE, PCSTR, BOOL)>(GetProcAddress(hProxy, "SymInitialize"));
+    const auto SymCleanup = reinterpret_cast<BOOL(WINAPI *)(HANDLE)>(GetProcAddress(hProxy, "SymCleanup"));
+    if (SymInitialize && SymCleanup) {
         HANDLE hProcess = GetCurrentProcess();
-        BOOL initOk = pfnSymInit(hProcess, NULL, FALSE);
+        BOOL initOk = SymInitialize(hProcess, NULL, FALSE);
         printf("  [+] SymInitialize(GetCurrentProcess(), NULL, FALSE) = %s\n", initOk ? "TRUE" : "FALSE");
-        BOOL cleanupOk = pfnSymCleanup(hProcess);
+        BOOL cleanupOk = SymCleanup(hProcess);
         printf("  [+] SymCleanup(GetCurrentProcess()) = %s\n", cleanupOk ? "TRUE" : "FALSE");
     } else {
         fprintf(stderr, "  [-] GetProcAddress for SymInitialize/SymCleanup failed!\n");
@@ -234,8 +228,8 @@ int main(int argc, char** argv)
     }
 
     /* 4. Test MakeSureDirectoryPathExists (image helper function) */
-    PFN_MakeSureDirectoryPathExists pfnMakeDir = (PFN_MakeSureDirectoryPathExists)GetProcAddress(hProxy, "MakeSureDirectoryPathExists");
-    if (pfnMakeDir) {
+    const auto MakeSureDirectoryPathExists = reinterpret_cast<BOOL(WINAPI *)(PCSTR)>(GetProcAddress(hProxy, "MakeSureDirectoryPathExists"));
+    if (MakeSureDirectoryPathExists) {
         printf("  [+] MakeSureDirectoryPathExists resolved successfully.\n");
     } else {
         fprintf(stderr, "  [-] GetProcAddress(MakeSureDirectoryPathExists) failed!\n");
@@ -243,12 +237,18 @@ int main(int argc, char** argv)
     }
 
     /* 5. Test local stub functions */
-    FARPROC pfnCopyPdb = GetProcAddress(hProxy, "CopyPdb");
+    const auto CopyPdb = reinterpret_cast<BOOL(WINAPI *)(PCSTR, PCSTR, BOOL)>(GetProcAddress(hProxy, "CopyPdb"));
     FARPROC pfnMarkSwap = GetProcAddress(hProxy, "MarkImageAsRunFromSwap");
     FARPROC pfnMap64 = GetProcAddress(hProxy, "MapDebugInformation64");
     FARPROC pfnUnmap64 = GetProcAddress(hProxy, "UnmapDebugInformation64");
-    if (pfnCopyPdb && pfnMarkSwap && pfnMap64 && pfnUnmap64) {
+    if (CopyPdb && pfnMarkSwap && pfnMap64 && pfnUnmap64) {
         printf("  [+] All 4 local stub functions (CopyPdb, MarkImageAsRunFromSwap, MapDebugInformation64, UnmapDebugInformation64) resolved.\n");
+        if (CopyPdb("identical.pdb", "identical.pdb", FALSE)) {
+            printf("  [+] CopyPdb identical path test passed.\n");
+        } else {
+            fprintf(stderr, "  [-] CopyPdb identical path test failed!\n");
+            failedCount++;
+        }
     } else {
         fprintf(stderr, "  [-] Failed to resolve one or more local stub functions!\n");
         failedCount++;
